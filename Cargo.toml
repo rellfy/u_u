@@ -1,0 +1,12 @@
+[package]
+name = "u_u"
+version = "2020.0.1"
+authors = ["Lorenzo Fontoura <lorenzo@nioel.com>"]
+edition = "2018"
+license = "MIT"
+homepage = "https://github.com/rellfy/u_u"
+repository = "https://github.com/rellfy/u_u"
+description = "Library to build HTML UIs through WASM"
+readme = "README.md"
+
+[dependencies]
