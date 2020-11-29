@@ -1,6 +1,9 @@
 use std::collections::HashMap;
-use crate::dom::Attribute;
-use crate::util;
+use crate::{
+    dom::*,
+    util,
+    env,
+};
 
 #[derive(Debug)]
 pub struct Element {
@@ -9,7 +12,7 @@ pub struct Element {
     name: String,
     text: String,
     attributes: HashMap<String, Attribute>,
-    elements: HashMap<String, Vec<Element>>,
+    elements: Vec<Element>,
 }
 
 impl Element {
@@ -20,8 +23,38 @@ impl Element {
             name: name.to_string(),
             text: String::new(),
             attributes: HashMap::new(),
-            elements: HashMap::new(),
+            elements: Vec::new(),
         }
+    }
+
+    // TODO: write function to retrieve data string from JS
+    pub fn from_uuid(uuid: String) -> Element {
+        Element {
+            uuid,
+            parent: None,
+            name: "div".to_owned(),
+            text: String::new(),
+            attributes: HashMap::new(),
+            elements: Vec::new(),
+        }
+    }
+
+    pub fn get_by_id(id: &str) -> Option<Element> {
+        let mut uuid;
+        unsafe {
+            let size = env::send_string_return(id, env::get_element_by_id);
+            uuid = env::get_buffer_as_string(size);
+        }
+
+        if uuid.len() == 1 {
+            return None;
+        }
+
+        Some(Element::from_uuid(uuid))
+    }
+
+    pub fn get_uuid(&self) -> &str {
+        self.uuid.as_str()
     }
 
     pub fn get_name(&self) -> &str {
@@ -52,14 +85,9 @@ impl Element {
     }
 
     pub fn add_element(&mut self, name: &str) {
-        if !self.elements.contains_key(name) {
-            self.elements.insert(name.to_owned(), Vec::new());
-        }
-
-        let elements = self.elements.get_mut(name).unwrap();
         let mut element = Element::create(name);
         element.set_parent(self.uuid.clone());
-        elements.push(element);
+        self.elements.push(element);
     }
 
     /**
@@ -113,10 +141,8 @@ impl Element {
             data.push('\n');
         }
         // Write elements.
-        for (key, value) in &self.elements {
-            for i in 0..value.len() {
-                data.push_str(value[i].generate_data_string().as_str());
-            }
+        for i in 0..self.elements.len() {
+            data.push_str(self.elements[i].generate_data_string().as_str());
         }
 
         data

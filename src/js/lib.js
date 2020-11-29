@@ -11,6 +11,11 @@ window.u_u = new (class {
         return this.root.instance;
     }
 
+    getTextFromPointer(pointer, length) {
+        const bytes = new Uint8Array(this.instance.exports.memory.buffer, pointer, length);
+        return new TextDecoder().decode(bytes);
+    }
+
     /**
      * @param {string} string
      */
@@ -28,25 +33,33 @@ window.u_u = new (class {
         for (let i = 0; i < array.length; i++) {
             u8[i] = array[i];
         }
+        return array.length;
     }
 
-    generateUuidV4() {
+    sendString(string) {
+        const array = this.stringToUint8Array(string);
+        return this.sendUint8Array(array);
+    }
+
+    generateUuidV4(send = true) {
         const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
             /[xy]/g,
             (c) => {
                 const r = Math.random() * 16 | 0;
-                const v = c == "x" ? r : (r & 0x3 | 0x8);
+                const v = c === "x" ? r : (r & 0x3 | 0x8);
                 return v.toString(16);
             }
         );
-        let array = this.stringToUint8Array(uuid);
-        this.sendUint8Array(array);
-        return array.length;
+
+        if (!send)
+            return uuid;
+
+        return this.sendString(uuid);
     }
 
     consoleLog(pointer, length) {
-        const bytes = new Uint8Array(this.instance.exports.memory.buffer, pointer, length);
-        console.log(new TextDecoder().decode(bytes));
+        const message = this.getTextFromPointer(pointer, length);
+        console.log(message);
     };
 
     /**
@@ -60,6 +73,20 @@ window.u_u = new (class {
         importObject.env.console_log = this.consoleLog.bind(this);
         importObject.env.uuidV4 = this.generateUuidV4.bind(this);
         importObject.env.sync_elements = this.syncElements.bind(this);
+        importObject.env.get_element_by_id = this.getElementById.bind(this);
+    }
+
+    // TODO: change to generic method with enum to retrieve by any attribute & value.
+    getElementById(pointer, length) {
+        const id = this.getTextFromPointer(pointer, length);
+        const element = document.getElementById(id);
+
+        if (element == null)
+            return this.sendString("\0");
+
+        const uuid = this.generateUuidV4(false);
+        this.elements[uuid] = element;
+        return this.sendString(uuid);
     }
 
     validateUuid(string) {
@@ -89,8 +116,7 @@ window.u_u = new (class {
      *     ...
      */
     syncElements(pointer, length) {
-        const bytes = new Uint8Array(this.instance.exports.memory.buffer, pointer, length);
-        const dataString = new TextDecoder().decode(bytes);
+        const dataString = this.getTextFromPointer(pointer, length);
         const data = {};
         const fields = dataString.split("\n");
 
