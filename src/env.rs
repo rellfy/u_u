@@ -10,6 +10,7 @@ pub fn get_buffer() -> &'static [u8; 10_000] {
 extern "C" {
     pub fn console_log(msg: *const u8, length: usize);
     pub fn uuidV4() -> usize;
+    pub fn sync_elements(data: *const u8, length: usize);
 }
 
 #[no_mangle]
