@@ -108,8 +108,28 @@ impl Element {
     }
 
     pub fn set_text(&mut self, text: &str) {
+        if self.name != "text" {
+            let existing_text = self.get_element_by_name("text");
+
+            if existing_text.is_some() {
+                let element = existing_text.unwrap();
+                element.set_text(text);
+                element.sync();
+            } else {
+                self.add_text(text);
+            }
+
+            return;
+        }
+
         self.text = text.to_owned();
         self.sync();
+    }
+
+    pub fn add_text(&mut self, text: &str) {
+        let element = self.add_element("text");
+        element.set_text(text);
+        element.sync();
     }
 
     pub fn set_parent(&mut self, uuid: String) {

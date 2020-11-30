@@ -147,8 +147,6 @@ window.u_u = new (class {
 
         const element = createFunc();
 
-        // console.log(elementData);
-
         if (elementData.parent == null)
             return element;
 
