@@ -13,13 +13,9 @@ pub fn get_buffer_slice(size: usize) -> Vec<u8> {
 }
 
 pub fn get_buffer_as_string(size: usize) -> String {
-    let mut string;
-
-    unsafe {
-        let data = &get_buffer()[0..size];
-        string = String::from_utf8_lossy(data).parse().unwrap();
-    }
-
+    let string;
+    let data = &get_buffer()[0..size];
+    string = String::from_utf8_lossy(data).parse().unwrap();
     string
 }
 

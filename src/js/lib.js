@@ -96,8 +96,7 @@ window.u_u = new (class {
     }
 
     /**
-     * Applies changes to the DOM according to streaming WASM element data.
-     * @param data The update string in the format of
+     * @param data The update string in the format:
      * {uuid}
      * {parent uuid} | \0
      * \n
@@ -115,87 +114,114 @@ window.u_u = new (class {
      *     \n
      *     ...
      */
-    syncElements(pointer, length) {
+    getElementDataFromWasm(pointer, length) {
         const dataString = this.getTextFromPointer(pointer, length);
-        const data = {};
         const fields = dataString.split("\n");
 
-        let lastUuidIndex = 0;
-        let lastUuid = null;
+        let uuid = fields[0];
 
-        for (let i = 0; i < fields.length; i++) {
-            const field = fields[i];
-            const isUuid = this.validateUuid(field);
+        const element = {
+            uuid,
+            parent: fields[1].length === 1 ? null : fields[1],
+            name: fields[2],
+            text: fields[3],
+            attributes: {}
+        };
 
-            if (isUuid) {
-                let parentUuid = fields[i + 1];
-                data[field] = {
-                    uuid: field,
-                    parent: parentUuid.length === 1 ? null : parentUuid,
-                    attributes: {}
-                };
-                lastUuid = field;
-                lastUuidIndex = i;
-                i++;
-                continue;
-            }
-
-            // Get element-relative index.
-            let j = i - lastUuidIndex;
-
-            switch (j) {
-                case 2:
-                    data[lastUuid].name = field;
-                    break;
-                case 3:
-                    data[lastUuid].text = field;
-                    break;
-                default:
-                    // Attribute.
-                    const hasValue = i !== fields.length - 1 && fields[i + 1] !== '\0';
-                    const value = !hasValue ? null : fields[i + 1];
-                    data[lastUuid].attributes[field] = value;
-                    i++;
-            }
+        // Set attributes.
+        for (let i = 4; i < fields.length; i++) {
+            const hasValue = i !== fields.length - 1 && fields[i + 1] !== '\0';
+            const name = fields[i];
+            const value = !hasValue ? null : fields[i + 1];
+            element.attributes[name] = value;
+            i++;
         }
 
-        console.log("Virtual DOM", data);
-
-        // Apply virtual DOM.
-        for (let uuid in data) {
-            // TODO: actually compare differences & apply deltas only to DOM.
-            if (this.compareVirtualElements(data[uuid], this.virtualElements[uuid]))
-                continue;
-
-            this.virtualElements[uuid] = data[uuid];
-
-            if (this.elements[uuid] == null)
-                this.elements[uuid] = document.createElement(this.virtualElements[uuid].name);
-
-            for (let name in this.virtualElements[uuid].attributes) {
-                // TODO: check why this happens.
-                if (name === "")
-                    continue;
-
-                const attribute = document.createAttribute(name);
-                attribute.value = this.virtualElements[uuid].attributes[name];
-                this.elements[uuid].setAttributeNode(attribute);
-            }
-
-            const parentElement = this.virtualElements[uuid].parent == null ?
-                document.body :
-                this.elements[this.virtualElements[uuid].parent];
-
-            parentElement.appendChild(this.elements[uuid]);
-            console.log(this.elements[uuid]);
-        }
-
+        return element;
     }
 
-    compareVirtualElements(a, b) {
-        if (a == null || b == null)
-            return a == null && b == null;
+    createElement(elementData) {
+        const createFunc = elementData.name !== "text" ?
+            () => document.createElement(elementData.name) :
+            () => document.createTextNode(elementData.text);
 
-        return a.uuid === b.uuid && a.parent === b.parent;
+        const element = createFunc();
+
+        // console.log(elementData);
+
+        if (elementData.parent == null)
+            return element;
+
+        this.elements[elementData.parent].appendChild(element);
+        return element;
+    }
+
+    /**
+     * Applies changes to the DOM according to streaming WASM element data.
+     */
+    applyElementChanges(element) {
+        // console.log("Virtual DOM", this.virtualElements);
+        const uuid = element.uuid;
+
+        if (this.elements[uuid] == null) {
+            this.virtualElements[uuid] = {};
+            this.elements[uuid] = this.createElement(element);
+        }
+
+        for (let key in this.virtualElements[uuid]) {
+            if (this.virtualElements[uuid][key] === element[key])
+                continue;
+
+            // Apply changes to the DOM.
+            switch (key) {
+                case "uuid":
+                case "parent":
+                    break;
+                case "text":
+                    this.elements[uuid].nodeValue = element[key];
+                    break;
+                case "attributes":
+                    let names = [];
+
+                    // Add new attributes.
+                    for (const name in element[key]) {
+                        if (name === "")
+                            continue;
+
+                        names.push(name);
+                        const value = element[key][name] ?? "";
+                        const attribute = document.createAttribute(name);
+                        attribute.value = value;
+
+                        this.elements[uuid].setAttributeNode(attribute);
+                    }
+
+                    // Remove old attributes.
+                    for (const name in this.virtualElements[uuid][key]) {
+                        if (name == "")
+                            continue;
+
+                        if (names.includes(name))
+                            continue;
+
+                        this.elements[uuid].removeAttribute(name);
+                    }
+                    break;
+            }
+        }
+
+        // console.log("Set element", element);
+        this.virtualElements[uuid] = element;
+
+        // console.log(this.virtualElements);
+        // console.log(this.elements);
+    }
+
+    /**
+     * Fetch element data from WASM and apply changes to the DOM.
+     */
+    syncElements(pointer, length) {
+        const element = this.getElementDataFromWasm(pointer, length);
+        this.applyElementChanges(element);
     }
 });

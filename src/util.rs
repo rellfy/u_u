@@ -5,7 +5,7 @@ pub fn log(msg: &str) {
 }
 
 pub fn get_uuidv4() -> String {
-    let mut string;
+    let string;
 
     unsafe {
         let size = env::uuidV4();

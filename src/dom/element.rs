@@ -39,18 +39,60 @@ impl Element {
         }
     }
 
-    pub fn get_by_id(id: &str) -> Option<Element> {
-        let mut uuid;
-        unsafe {
-            let size = env::send_string_return(id, env::get_element_by_id);
-            uuid = env::get_buffer_as_string(size);
+    pub fn get_element_by_uuid<'a>(&'a mut self, uuid: &str) -> Option<&'a mut Element> {
+        if self.get_uuid() == uuid {
+            Some(self)
+        } else {
+            self.elements
+                .iter_mut()
+                .filter_map(|x| x.get_element_by_uuid(uuid)).next()
         }
+    }
+
+    pub fn get_element_by_id(&mut self, id: &str) -> Option<&mut Element> {
+        self.get_element_by_attribute("id", id)
+    }
+
+    pub fn get_element_by_attribute<'a>(
+        &'a mut self,
+        name: &str,
+        value: &str
+    ) -> Option<&'a mut Element>
+    {
+        let attribute = self.attributes.get(name);
+
+        if attribute.is_some() && attribute.unwrap().value.is_some() &&
+            attribute.unwrap().value.as_ref().unwrap().as_str() == value {
+            Some(self)
+        } else {
+            self.elements
+                .iter_mut()
+                .filter_map(|x| x.get_element_by_id(value)).next()
+        }
+    }
+
+    pub fn get_element_by_name<'a>(&'a mut self, name: &str) -> Option<&'a mut Element> {
+        if self.name == name {
+            Some(self)
+        } else {
+            self.elements
+                .iter_mut()
+                .filter_map(|x| x.get_element_by_name(name)).next()
+        }
+    }
+
+    pub fn get_document_element_by_id(id: &str) -> Option<Element> {
+        let uuid;
+        let size = env::send_string_return(id, env::get_element_by_id);
+        uuid = env::get_buffer_as_string(size);
 
         if uuid.len() == 1 {
             return None;
         }
 
-        Some(Element::from_uuid(uuid))
+        let element = Element::from_uuid(uuid);
+        element.sync();
+        Some(element)
     }
 
     pub fn get_uuid(&self) -> &str {
@@ -67,27 +109,55 @@ impl Element {
 
     pub fn set_text(&mut self, text: &str) {
         self.text = text.to_owned();
+        self.sync();
     }
 
     pub fn set_parent(&mut self, uuid: String) {
         self.parent = Some(uuid);
+        self.sync();
     }
 
-    pub fn add_attribute(&mut self, name: &str, value: Option<&str>) {
-        if self.attributes.contains_key(name) {
+    pub fn set_attribute(&mut self, name: &str, value: Option<&str>) {
+        let attribute = self.attributes.get_mut(name);
+
+        if attribute.is_some() {
+            attribute.unwrap().value = if value.is_some() {
+                Some(value.unwrap().to_owned())
+            } else {
+                None
+            };
+        } else {
+            self.attributes.insert(
+                name.to_string(),
+                Attribute::new(name, value)
+            );
+        }
+
+        self.sync();
+    }
+
+    pub fn remove_attribute(&mut self, name: &str) {
+        if !self.attributes.contains_key(name) {
             return;
         }
 
-        self.attributes.insert(
-            name.to_string(),
-            Attribute::new(name, value)
-        );
+        self.attributes.remove_entry(name);
+        self.sync();
     }
 
-    pub fn add_element(&mut self, name: &str) {
+    pub fn add_element(&mut self, name: &str) -> &mut Element {
         let mut element = Element::create(name);
+        let uuid = element.get_uuid().to_owned();
         element.set_parent(self.uuid.clone());
         self.elements.push(element);
+        self.get_element_by_uuid(uuid.as_str()).unwrap()
+    }
+
+    fn sync(&self) {
+        let data = self.generate_data_string();
+        unsafe {
+            env::sync_elements(data.as_ptr(), data.len());
+        }
     }
 
     /**
@@ -110,7 +180,7 @@ impl Element {
      *     \n
      *     ...
      */
-    pub fn generate_data_string(&self) -> String {
+    fn generate_data_string(&self) -> String {
         let mut data = String::new();
 
         // Write UUID.
@@ -130,7 +200,7 @@ impl Element {
         data.push_str(self.text.as_str());
         data.push('\n');
         // Write attributes.
-        for (key, value) in &self.attributes {
+        for (_key, value) in &self.attributes {
             data.push_str(value.name.as_str());
             data.push('\n');
             if value.value.as_ref().is_some() {
@@ -141,9 +211,9 @@ impl Element {
             data.push('\n');
         }
         // Write elements.
-        for i in 0..self.elements.len() {
-            data.push_str(self.elements[i].generate_data_string().as_str());
-        }
+        // for i in 0..self.elements.len() {
+        //     data.push_str(self.elements[i].generate_data_string().as_str());
+        // }
 
         data
     }
