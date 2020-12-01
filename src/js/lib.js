@@ -95,51 +95,6 @@ window.u_u = new (class {
             !== null;
     }
 
-    /**
-     * @param data The update string in the format:
-     * {uuid}
-     * {parent uuid} | \0
-     * \n
-     * {element_name}
-     * \n
-     * {element_text}
-     * \n
-     * {attribute_name}
-     * \n
-     * {attribute_value} \0
-     * \n
-     * ...
-     * {child_uuid}
-     *     ...
-     *     \n
-     *     ...
-     */
-    getElementDataFromWasm(pointer, length) {
-        const dataString = this.getTextFromPointer(pointer, length);
-        const fields = dataString.split("\n");
-
-        let uuid = fields[0];
-
-        const element = {
-            uuid,
-            parent: fields[1].length === 1 ? null : fields[1],
-            name: fields[2],
-            text: fields[3],
-            attributes: {}
-        };
-
-        // Set attributes.
-        for (let i = 4; i < fields.length; i++) {
-            const hasValue = i !== fields.length - 1 && fields[i + 1] !== '\0';
-            const name = fields[i];
-            const value = !hasValue ? null : fields[i + 1];
-            element.attributes[name] = value;
-            i++;
-        }
-
-        return element;
-    }
-
     createElement(elementData) {
         const createFunc = elementData.name !== "text" ?
             () => document.createElement(elementData.name) :
@@ -158,7 +113,6 @@ window.u_u = new (class {
      * Applies changes to the DOM according to streaming WASM element data.
      */
     applyElementChanges(element) {
-        // console.log("Virtual DOM", this.virtualElements);
         const uuid = element.uuid;
 
         if (this.elements[uuid] == null) {
@@ -187,7 +141,7 @@ window.u_u = new (class {
                             continue;
 
                         names.push(name);
-                        const value = element[key][name] ?? "";
+                        const value = element[key][name].value ?? "";
                         const attribute = document.createAttribute(name);
                         attribute.value = value;
 
@@ -208,18 +162,14 @@ window.u_u = new (class {
             }
         }
 
-        // console.log("Set element", element);
         this.virtualElements[uuid] = element;
-
-        // console.log(this.virtualElements);
-        // console.log(this.elements);
     }
 
     /**
      * Fetch element data from WASM and apply changes to the DOM.
      */
     syncElements(pointer, length) {
-        const element = this.getElementDataFromWasm(pointer, length);
+        const element = JSON.parse(this.getTextFromPointer(pointer, length));
         this.applyElementChanges(element);
     }
 });

@@ -1,4 +1,6 @@
-#[derive(Hash, Eq, PartialEq, Debug)]
+use serde::Serialize;
+
+#[derive(Hash, Eq, PartialEq, Debug, Serialize)]
 pub struct Attribute {
     pub name: String,
     pub value: Option<String>,

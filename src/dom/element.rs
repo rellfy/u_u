@@ -1,17 +1,20 @@
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
+use serde_json::Result;
 use crate::{
     dom::*,
     util,
     env,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Element {
     uuid: String,
     parent: Option<String>,
     name: String,
     text: String,
     attributes: HashMap<String, Attribute>,
+    #[serde(skip_serializing)]
     elements: Vec<Element>,
 }
 
@@ -174,67 +177,9 @@ impl Element {
     }
 
     fn sync(&self) {
-        let data = self.generate_data_string();
+        let json = serde_json::to_string(self).unwrap();
         unsafe {
-            env::sync_elements(data.as_ptr(), data.len());
+            env::sync_elements(json.as_ptr(), json.len());
         }
-    }
-
-    /**
-     * Data string format:
-     * {uuid}
-     * \n
-     * {parent uuid} | \0
-     * \n
-     * {element_name}
-     * \n
-     * {element_text}
-     * \n
-     * {attribute_name}
-     * \n
-     * {attribute_value} | \0
-     * \n
-     * ...
-     * {child_uuid}
-     *     ...
-     *     \n
-     *     ...
-     */
-    fn generate_data_string(&self) -> String {
-        let mut data = String::new();
-
-        // Write UUID.
-        data.push_str(self.uuid.as_str());
-        data.push('\n');
-        // Write parent UUID.
-        if self.parent.is_some() {
-            data.push_str(self.parent.as_ref().unwrap().as_str())
-        } else {
-            data.push('\0');
-        }
-        data.push('\n');
-        // Write name.
-        data.push_str(self.name.as_str());
-        data.push('\n');
-        // Write text content.
-        data.push_str(self.text.as_str());
-        data.push('\n');
-        // Write attributes.
-        for (_key, value) in &self.attributes {
-            data.push_str(value.name.as_str());
-            data.push('\n');
-            if value.value.as_ref().is_some() {
-                data.push_str(value.value.as_ref().unwrap().as_str());
-            } else {
-                data.push('\0');
-            }
-            data.push('\n');
-        }
-        // Write elements.
-        // for i in 0..self.elements.len() {
-        //     data.push_str(self.elements[i].generate_data_string().as_str());
-        // }
-
-        data
     }
 }
