@@ -2,12 +2,31 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json::Result;
 use crate::{
+    events::*,
     dom::*,
     util,
     env,
 };
 
+pub static mut EVENT_LISTENERS: HashMap<String, dyn FnMut(Event)> = HashMap::new();
 static mut ROOT: Option<Element> = None;
+
+#[no_mangle]
+fn trigger_event(bytes: &[u8]) {
+    const UUID_SIZE: usize = 26;
+    let uuid = String::from_utf8_(&bytes[0..UUID_SIZE-1]).unwrap();
+    let handler;
+    unsafe {
+        handler = EVENT_LISTENERS.get(uuid);
+    }
+    if handler.is_none() {
+        return;
+    }
+    let data = &bytes[UUID_SIZE..bytes.len()-1];
+    let callback = handler.unwrap();
+    callback();
+
+}
 
 #[derive(Debug, Serialize)]
 pub struct Element {
@@ -16,7 +35,7 @@ pub struct Element {
     name: String,
     text: String,
     attributes: HashMap<String, Attribute>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     elements: Vec<Element>,
 }
 
@@ -196,6 +215,13 @@ impl Element {
         element.set_parent(self.uuid.clone());
         self.elements.push(element);
         self.get_element_by_uuid(uuid.as_str()).unwrap()
+    }
+
+    pub fn add_event_listener<F>(&mut self, event: &str, callback: F) where F: FnMut(Event) {
+        let event_uuid = util::get_uuidv4();
+        unsafe {
+            EVENT_LISTENERS.insert(event_uuid, callback);
+        }
     }
 
     fn sync(&self) {
