@@ -7,6 +7,8 @@ use crate::{
     env,
 };
 
+static mut ROOT: Option<Element> = None;
+
 #[derive(Debug, Serialize)]
 pub struct Element {
     uuid: String,
@@ -19,7 +21,7 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn create(name: &str) -> Element {
+    pub fn new(name: &str) -> Element {
         Element {
             uuid: util::get_uuidv4(),
             parent: None,
@@ -27,6 +29,26 @@ impl Element {
             text: String::new(),
             attributes: HashMap::new(),
             elements: Vec::new(),
+        }
+    }
+
+    pub fn create(name: &str) -> &mut Element {
+        let element;
+
+        unsafe {
+            if ROOT.is_none() {
+                ROOT = Some(Element::get_document_element_by_id("root").unwrap());
+            }
+
+            element = ROOT.as_mut().unwrap().add_element(name);
+        }
+
+        element
+    }
+
+    pub fn root() -> &'static mut Element {
+        unsafe {
+            ROOT.as_mut().unwrap()
         }
     }
 
@@ -169,7 +191,7 @@ impl Element {
     }
 
     pub fn add_element(&mut self, name: &str) -> &mut Element {
-        let mut element = Element::create(name);
+        let mut element = Element::new(name);
         let uuid = element.get_uuid().to_owned();
         element.set_parent(self.uuid.clone());
         self.elements.push(element);

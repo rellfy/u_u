@@ -4,14 +4,9 @@ use serde::{Serialize, Deserialize};
 use serde_json::Result;
 
 fn main() {
-    // get root
-    let mut root = Element::get_document_element_by_id("root").unwrap();
-    u_u::log(&*format!("root uuid: {}", root.get_uuid()));
-
     // add elements
     {
-        root.set_attribute("id", Some("root"));
-        let header = root.add_element("h1");
+        let header = Element::create("h1");
         header.set_text("Hello, world");
 
         let header_2 = header.add_element("h4");
@@ -21,7 +16,7 @@ fn main() {
 
     // change something
     {
-        let header  = root.get_element_by_name("h1").unwrap();
+        let header  = Element::root().get_element_by_name("h1").unwrap();
         header.set_text("Hello, world!");
     }
 }
