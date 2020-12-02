@@ -8,25 +8,7 @@ use crate::{
     env,
 };
 
-static mut EVENT_LISTENERS: Option<HashMap<String, Box<dyn FnMut(Event)>>> = None;
 static mut ROOT: Option<Element> = None;
-
-#[no_mangle]
-fn trigger_event(bytes: &[u8]) {
-    const UUID_SIZE: usize = 26;
-    let uuid = String::from_utf8(bytes[0..UUID_SIZE-1].to_owned()).unwrap();
-    let handler;
-    unsafe {
-        handler = EVENT_LISTENERS.as_ref().unwrap().get(uuid.as_str());
-    }
-    if handler.is_none() {
-        return;
-    }
-    let callback = handler.unwrap();
-    let data = &bytes[UUID_SIZE..bytes.len()-1];
-    // convert data to Event & pass in callback.
-    // callback();
-}
 
 #[derive(Debug, Serialize)]
 pub struct Element {
@@ -52,21 +34,15 @@ impl Element {
     }
 
     pub fn create(name: &str) -> &mut Element {
-        let element;
+        Element::root().add_element(name)
+    }
 
+    pub fn root() -> &'static mut Element {
         unsafe {
             if ROOT.is_none() {
                 ROOT = Some(Element::get_document_element_by_id("root").unwrap());
             }
 
-            element = ROOT.as_mut().unwrap().add_element(name);
-        }
-
-        element
-    }
-
-    pub fn root() -> &'static mut Element {
-        unsafe {
             ROOT.as_mut().unwrap()
         }
     }
@@ -215,18 +191,30 @@ impl Element {
         self.get_element_by_uuid(uuid.as_str()).unwrap()
     }
 
-    pub fn add_event_listener<F: 'static>(&mut self, event: &str, callback: F)
-        where F: FnMut(Event)
-    {
+    pub fn add_event_listener<'a, 'b:'a>(
+        &'a mut self,
+        event: &str,
+        callback: Box<dyn FnMut(Event) + 'b>
+    ) {
         let event_uuid = util::get_uuidv4();
-        unsafe {
-            if EVENT_LISTENERS.is_none() {
-                EVENT_LISTENERS = Some(HashMap::new());
-            }
 
-            EVENT_LISTENERS.as_mut().unwrap().insert(event_uuid, Box::new(callback));
-        }
-        // env::
+        event::get_event_listeners().insert(
+            event_uuid.clone(),
+            callback
+        );
+
+        let data  = format!(
+            r#"{{
+                "element_uuid": "{}",
+                "event_uuid": "{}",
+                "event": "{}"
+            }}"#,
+            self.uuid,
+            event_uuid,
+            event
+        );
+
+        env::send_bytes("addEventListener", data.as_bytes());
     }
 
     fn sync(&self) {

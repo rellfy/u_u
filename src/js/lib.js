@@ -53,13 +53,22 @@ window.u_u = new (class {
         return array;
     }
 
-    sendUint8Array(array) {
-        const bufferPointer = this.instance.exports.get_buffer_pointer();
+    /**
+     * Sends a byte array to a specific buffer.
+     */
+    sendUint8ArrayToBuffer(array, bufferPointer) {
         const u8 = new Uint8Array(this.instance.exports.memory.buffer, bufferPointer, array.length);
         for (let i = 0; i < array.length; i++) {
             u8[i] = array[i];
         }
         return array.length;
+    }
+
+    /**
+     * Sends a byte array to the main buffer.
+     */
+    sendUint8Array(array) {
+        return this.sendUint8ArrayToBuffer(array, this.instance.exports.get_buffer_pointer());
     }
 
     sendString(string) {
@@ -195,5 +204,43 @@ window.u_u = new (class {
     syncElements(json) {
         const element = JSON.parse(json);
         this.applyElementChanges(element);
+    }
+
+    addEventListener(json) {
+        const { event_uuid, element_uuid, event } = JSON.parse(json);
+        this.elements[element_uuid].addEventListener(event, (event) => {
+            event.uuid = element_uuid;
+            let stringifiedEvent = this.stringifyEvent(event);
+            const eventName = event.constructor.name;
+            const data = `{ "uuid": "${event_uuid}", ` +
+                `"event": { "${eventName}": ${stringifiedEvent} } }`;
+            let bytes = new Uint8Array(data.length);
+            for (let i = 0; i < data.length; i++) {
+                bytes[i] = data.charCodeAt(i);
+            }
+            this.sendUint8ArrayToBuffer(
+                bytes,
+                this.instance.exports.get_element_event_buffer_pointer()
+            );
+            this.instance.exports.element_trigger_event(bytes.length);
+        });
+    }
+
+    stringifyEvent(event) {
+        const object = {};
+
+        for (let key in event) {
+            object[key] = event[key];
+        }
+
+        return JSON.stringify(object, (key, value) => {
+            if (value instanceof Node)
+                return 'Node';
+
+            if (value instanceof Window)
+                return 'Window';
+
+            return value;
+        }, " ");
     }
 });
