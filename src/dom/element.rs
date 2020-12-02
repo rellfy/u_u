@@ -8,24 +8,24 @@ use crate::{
     env,
 };
 
-pub static mut EVENT_LISTENERS: HashMap<String, dyn FnMut(Event)> = HashMap::new();
+static mut EVENT_LISTENERS: Option<HashMap<String, Box<dyn FnMut(Event)>>> = None;
 static mut ROOT: Option<Element> = None;
 
 #[no_mangle]
 fn trigger_event(bytes: &[u8]) {
     const UUID_SIZE: usize = 26;
-    let uuid = String::from_utf8_(&bytes[0..UUID_SIZE-1]).unwrap();
+    let uuid = String::from_utf8(bytes[0..UUID_SIZE-1].to_owned()).unwrap();
     let handler;
     unsafe {
-        handler = EVENT_LISTENERS.get(uuid);
+        handler = EVENT_LISTENERS.as_ref().unwrap().get(uuid.as_str());
     }
     if handler.is_none() {
         return;
     }
-    let data = &bytes[UUID_SIZE..bytes.len()-1];
     let callback = handler.unwrap();
-    callback();
-
+    let data = &bytes[UUID_SIZE..bytes.len()-1];
+    // convert data to Event & pass in callback.
+    // callback();
 }
 
 #[derive(Debug, Serialize)]
@@ -126,9 +126,7 @@ impl Element {
     }
 
     pub fn get_document_element_by_id(id: &str) -> Option<Element> {
-        let uuid;
-        let size = env::send_string_return(id, env::get_element_by_id);
-        uuid = env::get_buffer_as_string(size);
+        let uuid = env::request_string("getElementById", id.as_bytes());
 
         if uuid.len() == 1 {
             return None;
@@ -217,17 +215,22 @@ impl Element {
         self.get_element_by_uuid(uuid.as_str()).unwrap()
     }
 
-    pub fn add_event_listener<F>(&mut self, event: &str, callback: F) where F: FnMut(Event) {
+    pub fn add_event_listener<F: 'static>(&mut self, event: &str, callback: F)
+        where F: FnMut(Event)
+    {
         let event_uuid = util::get_uuidv4();
         unsafe {
-            EVENT_LISTENERS.insert(event_uuid, callback);
+            if EVENT_LISTENERS.is_none() {
+                EVENT_LISTENERS = Some(HashMap::new());
+            }
+
+            EVENT_LISTENERS.as_mut().unwrap().insert(event_uuid, Box::new(callback));
         }
+        // env::
     }
 
     fn sync(&self) {
         let json = serde_json::to_string(self).unwrap();
-        unsafe {
-            env::sync_elements(json.as_ptr(), json.len());
-        }
+        env::send_bytes("syncElements", json.as_bytes());
     }
 }

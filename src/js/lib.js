@@ -11,9 +11,35 @@ window.u_u = new (class {
         return this.root.instance;
     }
 
+    getDataFromPointer(pointer, length) {
+        return new Uint8Array(this.instance.exports.memory.buffer, pointer, length);
+    }
+
     getTextFromPointer(pointer, length) {
-        const bytes = new Uint8Array(this.instance.exports.memory.buffer, pointer, length);
+        const bytes = this.getDataFromPointer(pointer, length);
         return new TextDecoder().decode(bytes);
+    }
+
+    receiveBytes(pointer, length) {
+        let string = this.getTextFromPointer(pointer, length);
+        let rpcSize = 0;
+
+        for (let i = 0; i < string.length; i++) {
+            rpcSize++;
+
+            if (string[i] === "\0")
+                break;
+        }
+
+        let rpcName = string.substr(0, rpcSize - 1);
+        string = string.substr(rpcSize, string.length - rpcSize);
+
+        if (string.length === 0)
+            string = null;
+
+        const object = this;
+        const func = object[rpcName].bind(this);
+        return func(string);
     }
 
     /**
@@ -42,6 +68,9 @@ window.u_u = new (class {
     }
 
     generateUuidV4(send = true) {
+        if (send == null)
+            send = true;
+
         const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
             /[xy]/g,
             (c) => {
@@ -57,8 +86,7 @@ window.u_u = new (class {
         return this.sendString(uuid);
     }
 
-    consoleLog(pointer, length) {
-        const message = this.getTextFromPointer(pointer, length);
+    consoleLog(message) {
         console.log(message);
     };
 
@@ -70,15 +98,11 @@ window.u_u = new (class {
     configureImportObject(importObject, root) {
         this.root = root;
         importObject.env = importObject.env ?? {};
-        importObject.env.console_log = this.consoleLog.bind(this);
-        importObject.env.uuidV4 = this.generateUuidV4.bind(this);
-        importObject.env.sync_elements = this.syncElements.bind(this);
-        importObject.env.get_element_by_id = this.getElementById.bind(this);
+        importObject.env.upload_bytes = this.receiveBytes.bind(this);
     }
 
     // TODO: change to generic method with enum to retrieve by any attribute & value.
-    getElementById(pointer, length) {
-        const id = this.getTextFromPointer(pointer, length);
+    getElementById(id) {
         const element = document.getElementById(id);
 
         if (element == null)
@@ -168,8 +192,8 @@ window.u_u = new (class {
     /**
      * Fetch element data from WASM and apply changes to the DOM.
      */
-    syncElements(pointer, length) {
-        const element = JSON.parse(this.getTextFromPointer(pointer, length));
+    syncElements(json) {
+        const element = JSON.parse(json);
         this.applyElementChanges(element);
     }
 });

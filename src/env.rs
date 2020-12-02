@@ -1,6 +1,7 @@
-pub static mut BUFFER: [u8; 10_000] = [0; 10_000];
+const BUFFER_SIZE: usize = 128_000;
+static mut BUFFER: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
 
-pub fn get_buffer() -> &'static [u8; 10_000] {
+pub fn get_buffer() -> &'static [u8; BUFFER_SIZE] {
     unsafe {
         &BUFFER
     }
@@ -12,41 +13,48 @@ pub fn get_buffer_slice(size: usize) -> Vec<u8> {
     }
 }
 
-pub fn get_buffer_as_string(size: usize) -> String {
-    let string;
-    let data = &get_buffer()[0..size];
-    string = String::from_utf8_lossy(data).parse().unwrap();
-    string
+pub fn get_buffer_slice_as_string(size: usize) -> String {
+    let data = get_buffer_slice(size);
+    String::from_utf8(data).unwrap()
 }
 
-pub fn send_bytes(value: &[u8], f: unsafe extern  fn(*const u8, usize)) {
+pub fn send_bytes(fn_name: &str, bytes: &[u8]) -> usize {
+    let fn_name_bytes = fn_name.as_bytes();
+    let mut data: Vec<u8> = vec![0; fn_name_bytes.len() + bytes.len() + 1];
+
+    for i in 0..fn_name_bytes.len() {
+        data[i] = fn_name_bytes[i];
+    }
+
+    for i in (fn_name_bytes.len()+1)..(fn_name_bytes.len()+1+bytes.len()) {
+        data[i] = bytes[i - (fn_name_bytes.len()+1)];
+    }
+
     unsafe {
-        f(value.as_ptr(), value.len());
+        upload_bytes(data.as_ptr(), data.len())
     }
 }
 
-pub fn send_bytes_return(value: &[u8], f: unsafe extern fn(*const u8, usize) -> usize) -> usize {
-    unsafe {
-        f(value.as_ptr(), value.len())
-    }
+pub fn request_bytes(fn_name: &str, bytes: &[u8]) -> Vec<u8> {
+    let size = send_bytes(fn_name, bytes);
+    get_buffer_slice(size)
 }
 
-pub fn send_string(string: &str, f: unsafe extern fn(*const u8, usize)) {
-    let bytes = string.as_bytes();
-    send_bytes(bytes, f);
+pub fn request_string(fn_name: &str, bytes: &[u8]) -> String {
+    String::from_utf8(request_bytes(fn_name, bytes)).unwrap()
 }
 
-pub fn send_string_return(string: &str, f: unsafe extern  fn(*const u8, usize) -> usize) -> usize {
-    let bytes = string.as_bytes();
-    send_bytes_return(bytes, f)
+pub fn get_bytes(fn_name: &str) -> Vec<u8> {
+    request_bytes(fn_name, &[])
+}
+
+pub fn get_string(fn_name: &str) -> String {
+    String::from_utf8(get_bytes(fn_name)).unwrap()
 }
 
 #[no_mangle]
 extern "C" {
-    pub fn console_log(msg: *const u8, length: usize);
-    pub fn sync_elements(data: *const u8, length: usize);
-    pub fn get_element_by_id(id: *const u8, length: usize) -> usize;
-    pub fn uuidV4() -> usize;
+    pub fn upload_bytes(data: *const u8, length: usize) -> usize;
 }
 
 #[no_mangle]

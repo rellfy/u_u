@@ -1,16 +1,9 @@
 use crate::env;
 
 pub fn log(msg: &str) {
-    env::send_string(msg, env::console_log);
+    env::send_bytes("consoleLog", msg.as_bytes());
 }
 
 pub fn get_uuidv4() -> String {
-    let string;
-
-    unsafe {
-        let size = env::uuidV4();
-        string = env::get_buffer_as_string(size);
-    }
-
-    string
+    env::get_string("generateUuidV4")
 }
