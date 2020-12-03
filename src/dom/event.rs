@@ -5,7 +5,7 @@ use crate::{
     dom::Element
 };
 
-pub type EventListeners<'a> = HashMap<String, Box<dyn FnMut(Event) + 'a>>;
+pub type EventListeners = HashMap<String, Box<dyn FnMut(Event) + 'static>>;
 
 const BUFFER_SIZE: usize = 64_000;
 static mut BUFFER: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
@@ -17,7 +17,7 @@ struct EventTrigger {
     event: Event,
 }
 
-pub fn get_event_listeners<'a, 'b:'a>() -> &'a mut EventListeners<'b> {
+pub fn get_event_listeners<'evli>() -> &'evli mut EventListeners {
     unsafe {
         if EVENT_LISTENERS.is_none() {
             EVENT_LISTENERS = Some(HashMap::new());

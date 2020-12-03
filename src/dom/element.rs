@@ -191,10 +191,10 @@ impl Element {
         self.get_element_by_uuid(uuid.as_str()).unwrap()
     }
 
-    pub fn add_event_listener<'a, 'b:'a>(
-        &'a mut self,
+    pub fn add_event_listener(
+        &mut self,
         event: &str,
-        callback: Box<dyn FnMut(Event) + 'b>
+        callback: Box<dyn FnMut(Event) + 'static>
     ) {
         let event_uuid = util::get_uuidv4();
 
