@@ -10,6 +10,7 @@ use thiserror::Error;
 const LOW_PASS_THRESHOLD: u8 = 60;
 /// Colour distance threshold to consider what is part of the background (during second pass).
 const HIGH_PASS_THRESHOLD_2: u8 = 80;
+const REPLACEMENT_PIXEL: Pixel = Pixel::ALPHA;
 
 #[derive(Error, Debug)]
 pub enum ConversionError {
@@ -27,6 +28,7 @@ pub struct Pixel {
     r: u8,
     g: u8,
     b: u8,
+    a: u8,
 }
 
 pub fn jpeg_to_svg<T>(reader: T) -> Result<Vec<u8>, ConversionError>
@@ -48,17 +50,17 @@ where
     filter_pixels_by_threshold(
         &mut low_pass_pixels,
         &average_bg_pixel,
-        &Pixel::BLACK,
+        &REPLACEMENT_PIXEL,
         LOW_PASS_THRESHOLD,
     );
     // Second pass.
-    let average_fg_pixel = compute_average_pixel_ignoring(&low_pass_pixels, &Pixel::BLACK);
+    let average_fg_pixel = compute_average_pixel_ignoring(&low_pass_pixels, &REPLACEMENT_PIXEL);
     println!("average fg pixel: {:#?}", average_fg_pixel);
     let mut high_pass_pixels = pixels.clone();
     filter_pixels_by_threshold(
         &mut high_pass_pixels,
         &average_fg_pixel,
-        &Pixel::BLACK,
+        &REPLACEMENT_PIXEL,
         HIGH_PASS_THRESHOLD_2,
     );
     // All high-pass pixels are removed from the low-pass pixels.
@@ -66,9 +68,9 @@ where
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let is_high_pass = high_pass_pixels[i] != Pixel::BLACK;
+            let is_high_pass = high_pass_pixels[i] != REPLACEMENT_PIXEL;
             if is_high_pass {
-                Pixel::BLACK
+                REPLACEMENT_PIXEL
             } else {
                 p.clone()
             }
@@ -79,7 +81,7 @@ where
         4,
         metadata.width,
         metadata.height,
-        &Pixel::BLACK,
+        &REPLACEMENT_PIXEL,
         50,
     );
     save_debug_png(
@@ -201,11 +203,11 @@ fn save_debug_png(path: &str, pixels: &Vec<Pixel>, width: u32, height: u32) {
     let file = File::create(path).unwrap();
     let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, width, height);
-    encoder.set_color(ColorType::Rgb);
+    encoder.set_color(ColorType::Rgba);
     let mut writer = encoder.write_header().unwrap();
     let data = pixels
         .iter()
-        .flat_map(|p| [p.r, p.g, p.b])
+        .flat_map(|p| [p.r, p.g, p.b, p.a])
         .collect::<Vec<_>>();
     writer.write_image_data(&data).unwrap();
 }
@@ -222,6 +224,7 @@ fn parse_pixels(raw_pixels: Vec<u8>) -> Result<Vec<Pixel>, ConversionError> {
             r: raw_pixels[i],
             g: raw_pixels[i + 1],
             b: raw_pixels[i + 2],
+            a: 255,
         })
     }
     Ok(pixels)
@@ -236,6 +239,7 @@ fn compute_average_pixel(pixels: &Vec<Pixel>) -> Pixel {
         r: avg_r,
         g: avg_g,
         b: avg_b,
+        a: 255,
     }
 }
 
@@ -249,7 +253,24 @@ fn compute_average_pixel_ignoring(pixels: &Vec<Pixel>, ignore: &Pixel) -> Pixel 
 }
 
 impl Pixel {
-    pub const BLACK: Pixel = Pixel { r: 0, g: 0, b: 0 };
+    pub const BLACK: Pixel = Pixel {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    };
+    pub const WHITE: Pixel = Pixel {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 255,
+    };
+    pub const ALPHA: Pixel = Pixel {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
 
     /// Checks whether the pixel is different than the reference by a threshold.
     pub fn exceeds_colour_threshold(&self, reference: &Pixel, threshold: u8) -> bool {
@@ -266,13 +287,14 @@ impl Pixel {
         f32::sqrt(r_sq + g_sq + b_sq) as u8
     }
 
-    /// Generates a diff pixel by comparing each field.
+    /// Generates a diff pixel by comparing each field (ignoring alpha).
     pub fn diff(&self, other: &Pixel) -> Pixel {
         let calc_diff = |a: u8, b: u8| if a >= b { a - b } else { b - a };
         Pixel {
             r: calc_diff(self.r, other.r),
             g: calc_diff(self.g, other.g),
             b: calc_diff(self.b, other.b),
+            a: 255,
         }
     }
 }
