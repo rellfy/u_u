@@ -2,15 +2,12 @@
 name = "u_u"
 version = "2020.0.1"
 authors = ["Lorenzo Fontoura <lorenzo@nioel.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 homepage = "https://github.com/rellfy/u_u"
 repository = "https://github.com/rellfy/u_u"
-description = "Library to build HTML UIs through WASM"
+description = "Library allowing conversions of JPEG diagrams to SVGs"
 readme = "README.md"
-
-[profile.release]
-debug = true
 
 [dependencies]
 serde = { version = "1.0.117", features = ["derive"] }
