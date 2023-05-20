@@ -1,13 +1,15 @@
-use jpeg_decoder::{Error as JpegError, PixelFormat};
+use jpeg_decoder::Error as JpegError;
 use png::ColorType;
 use std::fs::File;
 use std::io::{BufWriter, Read};
+use std::sync::Arc;
 use thiserror::Error;
 
+// TODO use alpha as "replacement"
 /// Colour distance threshold to consider what is part of the foreground (during first pass).
 const LOW_PASS_THRESHOLD: u8 = 60;
 /// Colour distance threshold to consider what is part of the background (during second pass).
-const HIGH_PASS_THRESHOLD_2: u8 = 100;
+const HIGH_PASS_THRESHOLD_2: u8 = 80;
 
 #[derive(Error, Debug)]
 pub enum ConversionError {
@@ -42,8 +44,9 @@ where
     // First pass.
     let average_bg_pixel = compute_average_pixel(&pixels);
     println!("average bg pixel: {:#?}", average_bg_pixel);
-    let low_pass_pixels = filter_pixels_by_threshold(
-        &pixels,
+    let mut low_pass_pixels = pixels.clone();
+    filter_pixels_by_threshold(
+        &mut low_pass_pixels,
         &average_bg_pixel,
         &Pixel::BLACK,
         LOW_PASS_THRESHOLD,
@@ -51,14 +54,15 @@ where
     // Second pass.
     let average_fg_pixel = compute_average_pixel_ignoring(&low_pass_pixels, &Pixel::BLACK);
     println!("average fg pixel: {:#?}", average_fg_pixel);
-    let high_pass_pixels = filter_pixels_by_threshold(
-        &pixels,
+    let mut high_pass_pixels = pixels.clone();
+    filter_pixels_by_threshold(
+        &mut high_pass_pixels,
         &average_fg_pixel,
         &Pixel::BLACK,
         HIGH_PASS_THRESHOLD_2,
     );
     // All high-pass pixels are removed from the low-pass pixels.
-    let pixels_result = low_pass_pixels
+    let mut pixels_result = low_pass_pixels
         .iter()
         .enumerate()
         .map(|(i, p)| {
@@ -70,6 +74,14 @@ where
             }
         })
         .collect::<Vec<_>>();
+    repeat_filter_by_neighbour_count(
+        &mut pixels_result,
+        4,
+        metadata.width,
+        metadata.height,
+        &Pixel::BLACK,
+        50,
+    );
     save_debug_png(
         "debug-low-pass.png",
         &low_pass_pixels,
@@ -91,20 +103,91 @@ where
     Ok(vec![])
 }
 
+fn repeat_filter_by_neighbour_count(
+    pixels: &mut Vec<Pixel>,
+    threshold: u8,
+    width: u16,
+    height: u16,
+    replacement: &Pixel,
+    max_count: usize,
+) {
+    let mut last_filtered_count;
+    for _ in 0..max_count {
+        last_filtered_count =
+            filter_by_neighbour_count(pixels, threshold, width, height, replacement);
+        if last_filtered_count == 0 {
+            // No need to keep iterating.
+            return;
+        }
+    }
+}
+
+fn filter_by_neighbour_count(
+    pixels: &mut Vec<Pixel>,
+    threshold: u8,
+    width: u16,
+    height: u16,
+    replacement: &Pixel,
+) -> u32 {
+    let mut filtered_count: u32 = 0;
+    let pixels_read = pixels.clone();
+    for (i, p) in pixels.iter_mut().enumerate() {
+        if p == replacement {
+            continue;
+        }
+        let neighbour_indices = get_pixel_neighbour_indices(i, width, height);
+        let actual_neighbour_count = neighbour_indices.iter().fold(0, |count, i| {
+            if pixels_read[*i] == *replacement {
+                count
+            } else {
+                count + 1
+            }
+        });
+        if actual_neighbour_count < (threshold as usize) {
+            *p = replacement.clone();
+            filtered_count += 1;
+        }
+    }
+    println!("filtered by neighbour count: {}", filtered_count);
+    filtered_count
+}
+
+/// Returns up to 8 indices.
+fn get_pixel_neighbour_indices(pixel_i: usize, width: u16, height: u16) -> Vec<usize> {
+    let x = (pixel_i % width as usize) as i16;
+    let y = (pixel_i / width as usize) as i16;
+    let mut neighbours = Vec::new();
+    for dx in -1..=1 {
+        for dy in -1..=1 {
+            // Skip the pixel itself.
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            let nx = x + dx;
+            let ny = y + dy;
+            // Check the neighbour coordinates are valid.
+            if nx >= 0 && nx < width as i16 && ny >= 0 && ny < height as i16 {
+                // Convert the neighbour coordinates back into a 1D index.
+                let neighbour_i = (ny as usize * width as usize) + nx as usize;
+                neighbours.push(neighbour_i);
+            }
+        }
+    }
+    neighbours
+}
+
 fn filter_pixels_by_threshold(
-    pixels: &Vec<Pixel>,
+    pixels: &mut Vec<Pixel>,
     reference: &Pixel,
     replacement: &Pixel,
     threshold: u8,
-) -> Vec<Pixel> {
-    let mut filtered_pixels: Vec<Pixel> = vec![];
-    let filtered_count = pixels.iter().fold(0, |c, p| {
+) {
+    let filtered_count = pixels.iter_mut().fold(0, |c, p| {
         if p.exceeds_colour_threshold(&reference, threshold) {
-            filtered_pixels.push(p.clone());
-            c + 1
-        } else {
-            filtered_pixels.push(replacement.clone());
             c
+        } else {
+            *p = replacement.clone();
+            c + 1
         }
     });
     let filtered_percent = ((filtered_count as f32) * 100.0 / (pixels.len() as f32)) as u32;
@@ -112,7 +195,6 @@ fn filter_pixels_by_threshold(
         "filtered pixel count: {} ({}%)",
         filtered_count, filtered_percent
     );
-    filtered_pixels
 }
 
 fn save_debug_png(path: &str, pixels: &Vec<Pixel>, width: u32, height: u32) {
