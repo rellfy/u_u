@@ -24,3 +24,6 @@ Cargo.lock
 #Added by cargo
 
 /target
+
+# Debug PNGs
+debug-*.png
