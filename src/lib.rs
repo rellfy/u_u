@@ -2,14 +2,12 @@ use jpeg_decoder::Error as JpegError;
 use png::ColorType;
 use std::fs::File;
 use std::io::{BufWriter, Read};
-use std::sync::Arc;
 use thiserror::Error;
 
-// TODO use alpha as "replacement"
 /// Colour distance threshold to consider what is part of the foreground (during first pass).
-const LOW_PASS_THRESHOLD: u8 = 60;
+const LOW_PASS_THRESHOLD: u8 = 75;
 /// Colour distance threshold to consider what is part of the background (during second pass).
-const HIGH_PASS_THRESHOLD_2: u8 = 80;
+const HIGH_PASS_THRESHOLD: u8 = 120;
 const REPLACEMENT_PIXEL: Pixel = Pixel::ALPHA;
 
 #[derive(Error, Debug)]
@@ -43,7 +41,7 @@ where
         return Err(ConversionError::NoMetadata);
     };
     let pixels = parse_pixels(raw_pixels)?;
-    // First pass.
+    // First pass -- remove background.
     let average_bg_pixel = compute_average_pixel(&pixels);
     println!("average bg pixel: {:#?}", average_bg_pixel);
     let mut low_pass_pixels = pixels.clone();
@@ -53,36 +51,14 @@ where
         &REPLACEMENT_PIXEL,
         LOW_PASS_THRESHOLD,
     );
-    // Second pass.
-    let average_fg_pixel = compute_average_pixel_ignoring(&low_pass_pixels, &REPLACEMENT_PIXEL);
-    println!("average fg pixel: {:#?}", average_fg_pixel);
+    // Second pass -- remove foreground.
     let mut high_pass_pixels = pixels.clone();
-    filter_pixels_by_threshold(
+    let pixels_result = remove_foreground(
+        &low_pass_pixels,
         &mut high_pass_pixels,
-        &average_fg_pixel,
-        &REPLACEMENT_PIXEL,
-        HIGH_PASS_THRESHOLD_2,
-    );
-    // All high-pass pixels are removed from the low-pass pixels.
-    let mut pixels_result = low_pass_pixels
-        .iter()
-        .enumerate()
-        .map(|(i, p)| {
-            let is_high_pass = high_pass_pixels[i] != REPLACEMENT_PIXEL;
-            if is_high_pass {
-                REPLACEMENT_PIXEL
-            } else {
-                p.clone()
-            }
-        })
-        .collect::<Vec<_>>();
-    repeat_filter_by_neighbour_count(
-        &mut pixels_result,
-        4,
+        &average_bg_pixel,
         metadata.width,
         metadata.height,
-        &REPLACEMENT_PIXEL,
-        50,
     );
     save_debug_png(
         "debug-low-pass.png",
@@ -103,6 +79,44 @@ where
         metadata.height as u32,
     );
     Ok(vec![])
+}
+
+fn remove_foreground(
+    low_pass_pixels: &Vec<Pixel>,
+    high_pass_pixels: &mut Vec<Pixel>,
+    average_bg_pixel: &Pixel,
+    width: u16,
+    height: u16,
+) -> Vec<Pixel> {
+    let average_fg_pixel = compute_average_pixel_ignoring_exact_and_threshold(
+        low_pass_pixels,
+        &REPLACEMENT_PIXEL,
+        average_bg_pixel,
+        HIGH_PASS_THRESHOLD,
+    );
+    println!("average fg pixel: {:#?}", average_fg_pixel);
+    filter_pixels_by_threshold(
+        high_pass_pixels,
+        &average_fg_pixel,
+        &REPLACEMENT_PIXEL,
+        HIGH_PASS_THRESHOLD,
+    );
+    // All high-pass pixels (background) are removed from the low-pass pixels (foreground).
+    // This cleans the foreground of any background that wasn't removed in the first pass.
+    let mut result = low_pass_pixels
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let is_high_pass = high_pass_pixels[i] != REPLACEMENT_PIXEL;
+            if is_high_pass {
+                REPLACEMENT_PIXEL
+            } else {
+                p.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    repeat_filter_by_neighbour_count(&mut result, 4, width, height, &REPLACEMENT_PIXEL, 50);
+    result
 }
 
 fn repeat_filter_by_neighbour_count(
@@ -243,10 +257,25 @@ fn compute_average_pixel(pixels: &Vec<Pixel>) -> Pixel {
     }
 }
 
-fn compute_average_pixel_ignoring(pixels: &Vec<Pixel>, ignore: &Pixel) -> Pixel {
+fn compute_average_pixel_ignoring_exact(pixels: &Vec<Pixel>, ignore: &Pixel) -> Pixel {
     let filtered = pixels
         .iter()
         .filter(|p| *p != ignore)
+        .cloned()
+        .collect::<Vec<_>>();
+    compute_average_pixel(&filtered)
+}
+
+fn compute_average_pixel_ignoring_exact_and_threshold(
+    pixels: &Vec<Pixel>,
+    ignore_exact: &Pixel,
+    ignore_threshold: &Pixel,
+    threshold: u8,
+) -> Pixel {
+    let filtered = pixels
+        .iter()
+        .filter(|p| *p != ignore_exact)
+        .filter(|p| p.exceeds_colour_threshold(ignore_threshold, threshold))
         .cloned()
         .collect::<Vec<_>>();
     compute_average_pixel(&filtered)
