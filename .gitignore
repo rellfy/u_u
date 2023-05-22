@@ -27,3 +27,6 @@ Cargo.lock
 
 # Debug PNGs
 debug-*.png
+
+# Example output svg
+output.svg
