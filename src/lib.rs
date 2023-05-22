@@ -115,10 +115,11 @@ fn remove_foreground(
             }
         })
         .collect::<Vec<_>>();
-    repeat_filter_by_neighbour_count(&mut result, 4, width, height, &REPLACEMENT_PIXEL, 50);
+    repeat_filter_by_neighbour_count(&mut result, 1, width, height, &REPLACEMENT_PIXEL, 50);
     result
 }
 
+/// Remove all pixels that have `threshold` or fewer neighbours.
 fn repeat_filter_by_neighbour_count(
     pixels: &mut Vec<Pixel>,
     threshold: u8,
@@ -159,7 +160,7 @@ fn filter_by_neighbour_count(
                 count + 1
             }
         });
-        if actual_neighbour_count < (threshold as usize) {
+        if actual_neighbour_count <= (threshold as usize) {
             *p = replacement.clone();
             filtered_count += 1;
         }
