@@ -1,8 +1,11 @@
 use jpeg_decoder::Error as JpegError;
 use png::ColorType;
+use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Read};
+use std::path::{Path, PathBuf};
 use thiserror::Error;
+use vtracer::{ColorMode, Config, Hierarchical};
 
 /// Colour distance threshold to consider what is part of the foreground (during first pass).
 const LOW_PASS_THRESHOLD: u8 = 75;
@@ -78,7 +81,26 @@ where
         metadata.width as u32,
         metadata.height as u32,
     );
-    Ok(vec![])
+    // TODO: fork vtracer & allow passing a reader so the debug image isn't needed.
+    let output_path = PathBuf::from("output.svg");
+    vtracer::convert_image_to_svg(Config {
+        input_path: PathBuf::from("debug-final.png"),
+        output_path: output_path.clone(),
+        color_mode: ColorMode::Color,
+        hierarchical: Hierarchical::Stacked,
+        filter_speckle: 4,
+        color_precision: 6,
+        layer_difference: 16,
+        mode: Default::default(),
+        corner_threshold: 60,
+        length_threshold: 4.0,
+        max_iterations: 10,
+        splice_threshold: 45,
+        path_precision: Some(8),
+    })
+    .unwrap();
+    let bytes = fs::read(output_path.as_path()).unwrap();
+    Ok(bytes)
 }
 
 fn remove_foreground(

@@ -10,7 +10,7 @@ description = "Library allowing conversions of JPEG diagrams to SVGs"
 readme = "README.md"
 
 [dependencies]
-svg = "0.13.1"
 jpeg-decoder = "0.3.0"
 thiserror = "1.0.40"
 png = "0.17.8"
+vtracer = "0.5.0"
