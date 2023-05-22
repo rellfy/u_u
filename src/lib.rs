@@ -6,12 +6,16 @@ use std::io::{BufWriter, Read};
 use std::path::PathBuf;
 use thiserror::Error;
 use visioncortex::PathSimplifyMode;
-use vtracer::{ColorMode, Config, Hierarchical, SvgPath};
+use vtracer::Config;
 
 /// Colour distance threshold to consider what is part of the foreground (during first pass).
 const LOW_PASS_THRESHOLD: u8 = 75;
 /// Colour distance threshold to consider what is part of the background (during second pass).
 const HIGH_PASS_THRESHOLD: u8 = 120;
+/// Colour distance threshold to re-add foreground based on foreground colour similarity.
+const HIGH_PASS_RESTORATION_THRESHOLD_FG: u8 = 90;
+/// Colour distance threshold to re-add foreground based on background colour difference.
+const HIGH_PASS_RESTORATION_THRESHOLD_BG: u8 = 45;
 const REPLACEMENT_PIXEL: Pixel = Pixel::ALPHA;
 
 #[derive(Error, Debug)]
@@ -57,8 +61,9 @@ where
     );
     // Second pass -- remove foreground.
     let mut high_pass_pixels = pixels.clone();
-    let pixels_result = remove_foreground(
+    let pixels_result = second_pass(
         &low_pass_pixels,
+        &pixels,
         &mut high_pass_pixels,
         &average_bg_pixel,
         metadata.width,
@@ -87,25 +92,17 @@ where
     vtracer::convert_image_to_svg(Config {
         input_path: PathBuf::from("debug-final.png"),
         output_path: output_path.clone(),
-        color_mode: ColorMode::Color,
-        hierarchical: Hierarchical::Stacked,
-        filter_speckle: 4,
-        color_precision: 6,
-        layer_difference: 16,
         mode: PathSimplifyMode::Spline,
-        corner_threshold: 60,
-        length_threshold: 4.0,
-        max_iterations: 10,
-        splice_threshold: 45,
-        path_precision: Some(8),
+        ..Default::default()
     })
     .unwrap();
     let bytes = fs::read(output_path.as_path()).unwrap();
     Ok(bytes)
 }
 
-fn remove_foreground(
+fn second_pass(
     low_pass_pixels: &Vec<Pixel>,
+    pixels: &Vec<Pixel>,
     high_pass_pixels: &mut Vec<Pixel>,
     average_bg_pixel: &Pixel,
     width: u16,
@@ -124,14 +121,26 @@ fn remove_foreground(
         &REPLACEMENT_PIXEL,
         HIGH_PASS_THRESHOLD,
     );
-    // All high-pass pixels (background) are removed from the low-pass pixels (foreground).
+    // All high-pass pixels (background) are removed from the foreground.
+    // Non-high-pass pixels that are similar to the foreground colour, and
+    // different to the background colour, are added to the foreground if not already
+    // in the foreground -- this reduces errors from first (low) pass.
     // This cleans the foreground of any background that wasn't removed in the first pass.
     let mut result = low_pass_pixels
         .iter()
         .enumerate()
         .map(|(i, p)| {
             let is_high_pass = high_pass_pixels[i] != REPLACEMENT_PIXEL;
-            if is_high_pass {
+            if !is_high_pass
+                // Similar to foreground.
+                && !pixels[i]
+                    .exceeds_colour_threshold(&average_fg_pixel, HIGH_PASS_RESTORATION_THRESHOLD_FG)
+                // Different than background.
+                && pixels[i]
+                    .exceeds_colour_threshold(&average_bg_pixel, HIGH_PASS_RESTORATION_THRESHOLD_BG)
+            {
+                average_fg_pixel.clone()
+            } else if is_high_pass {
                 REPLACEMENT_PIXEL
             } else {
                 p.clone()
@@ -216,6 +225,7 @@ fn get_pixel_neighbour_indices(pixel_i: usize, width: u16, height: u16) -> Vec<u
     neighbours
 }
 
+/// Replaces pixels by `replacement` based on `threshold` colour similarity.
 fn filter_pixels_by_threshold(
     pixels: &mut Vec<Pixel>,
     reference: &Pixel,
