@@ -3,9 +3,10 @@ use png::ColorType;
 use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use thiserror::Error;
-use vtracer::{ColorMode, Config, Hierarchical};
+use visioncortex::PathSimplifyMode;
+use vtracer::{ColorMode, Config, Hierarchical, SvgPath};
 
 /// Colour distance threshold to consider what is part of the foreground (during first pass).
 const LOW_PASS_THRESHOLD: u8 = 75;
@@ -91,7 +92,7 @@ where
         filter_speckle: 4,
         color_precision: 6,
         layer_difference: 16,
-        mode: Default::default(),
+        mode: PathSimplifyMode::Spline,
         corner_threshold: 60,
         length_threshold: 4.0,
         max_iterations: 10,
