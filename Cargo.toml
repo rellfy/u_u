@@ -1,6 +1,6 @@
 [package]
 name = "u_u"
-version = "2020.0.1"
+version = "0.1.0"
 authors = ["Lorenzo Fontoura <lorenzo@nioel.com>"]
 edition = "2021"
 license = "MIT"
