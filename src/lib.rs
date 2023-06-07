@@ -43,7 +43,9 @@ where
 {
     let mut decoder = jpeg_decoder::Decoder::new(reader);
     let raw_pixels = decoder.decode().map_err(|e| ConversionError::Decode(e))?;
+    #[cfg(feature = "debug")]
     println!("pixels length: {}", raw_pixels.len());
+    #[cfg(feature = "debug")]
     println!("metadata: {:#?}", decoder.info());
     let Some(metadata) = decoder.info() else {
         return Err(ConversionError::NoMetadata);
@@ -51,6 +53,7 @@ where
     let pixels = parse_pixels(raw_pixels)?;
     // First pass -- remove background.
     let average_bg_pixel = compute_average_pixel(&pixels);
+    #[cfg(feature = "debug")]
     println!("average bg pixel: {:#?}", average_bg_pixel);
     let mut low_pass_pixels = pixels.clone();
     filter_pixels_by_threshold(
@@ -69,12 +72,14 @@ where
         metadata.width,
         metadata.height,
     );
+    #[cfg(feature = "debug")]
     save_debug_png(
         "debug-low-pass.png",
         &low_pass_pixels,
         metadata.width as u32,
         metadata.height as u32,
     );
+    #[cfg(feature = "debug")]
     save_debug_png(
         "debug-high-pass.png",
         &high_pass_pixels,
@@ -87,16 +92,20 @@ where
         metadata.width as u32,
         metadata.height as u32,
     );
-    // TODO: fork vtracer & allow passing a reader so the debug image isn't needed.
+    // TODO: fork vtracer & allow passing a reader so the debug image isn't needed, and get bytes
+    // rather than re-writing an output file.
     let output_path = PathBuf::from("output.svg");
+    let debug_final_path = PathBuf::from("debug-final.png");
     vtracer::convert_image_to_svg(Config {
-        input_path: PathBuf::from("debug-final.png"),
+        input_path: debug_final_path.clone(),
         output_path: output_path.clone(),
         mode: PathSimplifyMode::Spline,
         ..Default::default()
     })
     .unwrap();
+    fs::remove_file(debug_final_path).unwrap();
     let bytes = fs::read(output_path.as_path()).unwrap();
+    fs::remove_file(output_path).unwrap();
     Ok(bytes)
 }
 
@@ -114,6 +123,7 @@ fn second_pass(
         average_bg_pixel,
         HIGH_PASS_THRESHOLD,
     );
+    #[cfg(feature = "debug")]
     println!("average fg pixel: {:#?}", average_fg_pixel);
     filter_pixels_by_threshold(
         high_pass_pixels,
@@ -197,6 +207,7 @@ fn filter_by_neighbour_count(
             filtered_count += 1;
         }
     }
+    #[cfg(feature = "debug")]
     println!("filtered by neighbour count: {}", filtered_count);
     filtered_count
 }
@@ -241,6 +252,7 @@ fn filter_pixels_by_threshold(
         }
     });
     let filtered_percent = ((filtered_count as f32) * 100.0 / (pixels.len() as f32)) as u32;
+    #[cfg(feature = "debug")]
     println!(
         "filtered pixel count: {} ({}%)",
         filtered_count, filtered_percent

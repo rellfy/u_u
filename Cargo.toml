@@ -9,6 +9,10 @@ repository = "https://github.com/rellfy/u_u"
 description = "Library allowing conversions of JPEG diagrams to SVGs"
 readme = "README.md"
 
+[features]
+default = []
+debug = []
+
 [dependencies]
 jpeg-decoder = "0.3.0"
 thiserror = "1.0.40"
