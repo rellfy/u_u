@@ -242,7 +242,7 @@ fn filter_pixels_by_threshold(
     reference: &Pixel,
     replacement: &Pixel,
     threshold: u8,
-) {
+) -> u32 {
     let filtered_count = pixels.iter_mut().fold(0, |c, p| {
         if p.exceeds_colour_threshold(&reference, threshold) {
             c
@@ -251,12 +251,14 @@ fn filter_pixels_by_threshold(
             c + 1
         }
     });
+    #[cfg(feature = "debug")]
     let filtered_percent = ((filtered_count as f32) * 100.0 / (pixels.len() as f32)) as u32;
     #[cfg(feature = "debug")]
     println!(
         "filtered pixel count: {} ({}%)",
         filtered_count, filtered_percent
     );
+    filtered_count
 }
 
 fn save_debug_png(path: &str, pixels: &Vec<Pixel>, width: u32, height: u32) {
@@ -301,15 +303,6 @@ fn compute_average_pixel(pixels: &Vec<Pixel>) -> Pixel {
         b: avg_b,
         a: 255,
     }
-}
-
-fn compute_average_pixel_ignoring_exact(pixels: &Vec<Pixel>, ignore: &Pixel) -> Pixel {
-    let filtered = pixels
-        .iter()
-        .filter(|p| *p != ignore)
-        .cloned()
-        .collect::<Vec<_>>();
-    compute_average_pixel(&filtered)
 }
 
 fn compute_average_pixel_ignoring_exact_and_threshold(
